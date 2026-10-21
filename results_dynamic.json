@@ -1,0 +1,46 @@
+{
+  "normal": {
+    "requests": 12,
+    "succeeded": 12,
+    "failed": 0,
+    "retried": 0,
+    "avg_latency_s": 0.796,
+    "p95_latency_s": 1.098,
+    "avg_throughput_mbps": 11.44,
+    "aggregate_throughput_mbps": 17.25,
+    "wall_time_s": 5.57,
+    "per_server": {
+      "server1": 6,
+      "server2": 6
+    }
+  },
+  "heavy_load": {
+    "requests": 16,
+    "succeeded": 16,
+    "failed": 0,
+    "retried": 0,
+    "avg_latency_s": 4.635,
+    "p95_latency_s": 6.994,
+    "avg_throughput_mbps": 4.38,
+    "aggregate_throughput_mbps": 23.8,
+    "wall_time_s": 10.76,
+    "per_server": {
+      "server1": 11,
+      "server2": 5
+    }
+  },
+  "server1_link_failure": {
+    "requests": 16,
+    "succeeded": 16,
+    "failed": 0,
+    "retried": 4,
+    "avg_latency_s": 5.539,
+    "p95_latency_s": 8.272,
+    "avg_throughput_mbps": 3.4,
+    "aggregate_throughput_mbps": 10.13,
+    "wall_time_s": 25.27,
+    "per_server": {
+      "server2": 16
+    }
+  }
+}
