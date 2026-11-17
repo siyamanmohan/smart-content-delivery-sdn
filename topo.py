@@ -68,10 +68,12 @@ def run_clients(net, specs):
     out = {}
     for host, p in procs:
         text, _ = p.communicate()
-        out[host] = None
-        for line in text.splitlines():
-            if line.startswith('SUMMARY '):
-                out[host] = json.loads(line[8:])
+        summary = next((line[8:] for line in reversed(text.splitlines())
+                        if line.startswith('SUMMARY ')), None)
+        if p.returncode != 0 or summary is None:
+            raise RuntimeError('%s: client runner failed (status %s): %s'
+                               % (host, p.returncode, text[-600:]))
+        out[host] = json.loads(summary)
     return out
 
 
@@ -102,13 +104,20 @@ def scenario(net, name, client_args, fail_at=None):
         timer.start()
         info('(server1 link will go DOWN after %.1fs)\n' % fail_at)
     t0 = time.time()
-    res = run_clients(net, [('client1', client_args), ('client2', client_args)])
-    wall = time.time() - t0
-    if timer:
-        timer.cancel()
-        net.configLinkStatus('server1', 's1', 'up')
-        time.sleep(5)                 # let heartbeat re-register server1
+    try:
+        res = run_clients(net, [('client1', client_args), ('client2', client_args)])
+        wall = time.time() - t0
+    finally:
+        if timer:
+            timer.cancel()
+            timer.join()
+            net.configLinkStatus('server1', 's1', 'up')
+            time.sleep(5)             # let heartbeat re-register server1
     agg = aggregate(res, wall)
+    expected = 2 * int(client_args[client_args.index('--count') + 1])
+    if agg['requests'] != expected:
+        raise RuntimeError('Expected %d request records, got %d'
+                           % (expected, agg['requests']))
     for k, v in agg.items():
         info('  %-26s %s\n' % (k, v))
     return agg

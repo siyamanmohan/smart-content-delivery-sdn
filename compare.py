@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Print static (baseline) vs dynamic results side by side."""
+from pathlib import Path
 import json
 
-with open('results_static.json') as f:
+HERE = Path(__file__).resolve().parent
+
+with (HERE / 'results_static.json').open() as f:
     st = json.load(f)
-with open('results_dynamic.json') as f:
+with (HERE / 'results_dynamic.json').open() as f:
     dy = json.load(f)
 
 metrics = ['succeeded', 'failed', 'retried', 'avg_latency_s', 'p95_latency_s',
