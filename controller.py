@@ -18,7 +18,8 @@ What it does
 * Port-status events (link down) mark a server DOWN instantly.
 * Port statistics are polled every second -> per-server utilisation.
 * When a server goes DOWN its flows are deleted, so the next packet of each
-  affected connection is re-evaluated and sent to a healthy server.
+  affected connection may fail. Client retries open new TCP connections
+  which can be assigned to a healthy server.
 
 Modes (environment variable LB_MODE)
 ------------------------------------
@@ -58,7 +59,6 @@ SERVER_META = {
     'server1': {'capacity_mbps': 30, 'delay_ms': 2},
     'server2': {'capacity_mbps': 20, 'delay_ms': 10},
 }
-DEFAULT_META = {'capacity_mbps': 20, 'delay_ms': 10}
 
 # cost = W_UTIL*utilisation + W_CONN*(conns / weight) + W_DELAY*delay_ms
 W_UTIL, W_CONN, W_DELAY = 1.0, 0.1, 0.02
@@ -189,17 +189,24 @@ class SmartContentController(app_manager.RyuApp):
             return
         try:
             info = json.loads(bytes(payload).decode())
-            name = info['name']
-        except (ValueError, KeyError):
+        except ValueError:
             return
-        meta = SERVER_META.get(name, DEFAULT_META)
+        if not isinstance(info, dict):
+            return
+        name = info.get('name')
+        active = info.get('active')
+        if not isinstance(name, str) or name not in SERVER_META:
+            return
+        if type(active) is not int or active < 0:
+            return
+        meta = SERVER_META[name]
         s = self.servers.setdefault(name, {
             'name': name, 'alive': False, 'rx_rate': 0.0,
             'prev_rx': None, 'prev_t': None, 'reported': 0,
             'capacity_mbps': meta['capacity_mbps'],
             'delay_ms': meta['delay_ms']})
         s.update(ip=ip.src, mac=eth.src, port=in_port, dpid=dp.id,
-                 last_hb=time.time(), reported=int(info.get('active', 0)))
+                 last_hb=time.time(), reported=active)
         if not s['alive']:
             s['alive'] = True
             self.logger.warning('SERVER UP    %s ip=%s port=%s', name, ip.src,
@@ -231,6 +238,11 @@ class SmartContentController(app_manager.RyuApp):
         name = self.sessions.get(key)
         srv = self.servers.get(name) if name else None
         if srv is None or (MODE != 'static' and not srv['alive']):
+            # A replica cannot take over an established TCP byte stream.
+            # Assign a backend only for an opening SYN, not a stale ACK.
+            syn, ack = 0x02, 0x10
+            if (t.bits & (syn | ack)) != syn:
+                return
             costs = ' '.join('%s=%.3f' % (n, self._cost(s))
                              for n, s in sorted(self.servers.items())
                              if s['alive'])

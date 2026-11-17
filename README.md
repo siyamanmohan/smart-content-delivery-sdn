@@ -4,7 +4,7 @@ Clients request content from **one virtual IP**. A Ryu (OpenFlow 1.3) controller
 picks a content server for every TCP connection based on server health, link
 utilisation, active connections and delay, and rewrites the flows in the switch
 so the client never knows which replica answered. If a server or its link fails,
-traffic is rerouted to the surviving server.
+new TCP connections can reach the surviving server.
 
 ## Topology
 
@@ -38,9 +38,9 @@ client2 (10.0.0.2)  --100Mbps,15ms--/ |  \
    lowest cost among alive servers wins.
 4. **Dynamic forwarding:** two flows per connection are installed:
    client->VIP rewritten to server, server->client rewritten back to VIP.
-5. **Recovery:** when a server goes DOWN its flows are deleted; the next packet
-   of each affected connection is re-evaluated and sent to a healthy server;
-   the client retries.
+5. **Recovery:** when a server goes DOWN its flows are deleted. That server’s
+   established TCP connections cannot migrate; the client retries with a new
+   socket. A new opening SYN is assigned to a healthy backend in dynamic mode.
 6. **Baseline:** `LB_MODE=static` always sends everything to server1 and ignores
    health and load.
 
@@ -59,7 +59,7 @@ Terminal 1:
 ```bash
 cd ~/smart-content-delivery-sdn
 sudo mn -c
-ryu-manager controller.py
+ryu-manager --ofp-tcp-listen-port 6653 controller.py
 ```
 Terminal 2:
 ```bash
@@ -80,10 +80,10 @@ link server1 s1 up
 
 ```bash
 # 1) baseline
-LB_MODE=static ryu-manager controller.py          # terminal 1
+LB_MODE=static ryu-manager --ofp-tcp-listen-port 6653 controller.py  # terminal 1
 sudo mn -c && sudo python3 topo.py --experiment --label static   # terminal 2
 # stop ryu (Ctrl+C), then 2) dynamic
-ryu-manager controller.py                         # terminal 1
+LB_MODE=dynamic ryu-manager --ofp-tcp-listen-port 6653 controller.py  # terminal 1
 sudo mn -c && sudo python3 topo.py --experiment --label dynamic  # terminal 2
 # 3) compare
 python3 compare.py
@@ -92,7 +92,10 @@ python3 compare.py
 Scenarios: **normal** (light load), **heavy_load** (2 clients x 4 parallel
 downloads), **server1_link_failure** (server1 link dies mid-transfer).
 Metrics: success/failed/retried requests, avg and p95 latency, per-request and
-aggregate throughput, per-server distribution.
+aggregate throughput, per-server distribution. Latency for successful retries
+includes time spent on earlier attempts. Re-run both modes on the demo VM; the
+checked-in JSON is from an earlier revision and not evidence of a fresh run.
+The experiment exits on a missing client summary or an incorrect request count.
 
 ## Test cases
 
@@ -102,10 +105,13 @@ aggregate throughput, per-server distribution.
 | 2 | heavy parallel downloads | dynamic spreads across both servers; static uses only server1 |
 | 3 | `link server1 s1 down` then request | controller logs `SERVER DOWN server1`, requests served by server2 |
 | 4 | `link server1 s1 up` | controller logs `SERVER UP server1` after next heartbeat |
-| 5 | kill a server process (`server2 pkill -f server_socket`) | heartbeat timeout => DOWN in ~3 s |
+| 5 | Stop only the intended replica by its verified PID (optional) | heartbeat timeout marks that replica DOWN after roughly 3–4 s |
 | 6 | dump-flows | per-connection rewrite flows (set_field eth/ipv4 dst/src) |
 
 ## Troubleshooting
+
+* Use the link-down demo first. Avoid broad `pkill -f` commands: the Mininet
+  hosts can share a PID namespace, so both replicas could stop.
 
 * `Switch did not connect`: start `ryu-manager` first; check port 6653 (`--ofp-tcp-listen-port 6653`).
 * Leftovers from earlier runs: `sudo mn -c`; make sure `openvswitch-switch` is running.
