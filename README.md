@@ -8,13 +8,12 @@ new TCP connections can reach the surviving server.
 
 ## Topology
 
-```
-client1 (10.0.0.1)  --100Mbps,5ms---\
-                                     s1 --- Ryu controller (127.0.0.1:6653)
-client2 (10.0.0.2)  --100Mbps,15ms--/ |  \
-                                      |   \-- server1 (10.0.0.10) 30Mbps, 2ms
-        VIP = 10.0.0.100:8080 (virtual) \--- server2 (10.0.0.20) 20Mbps, 10ms
-```
+![Mininet topology showing the central Ryu controller, Open vSwitch, two clients, and two servers](docs/topology.svg)
+
+The dashed line is the **OpenFlow control connection**. The solid lines are
+Mininet host links. Clients send TCP requests to `10.0.0.100:8080`; `s1`
+rewrites and forwards those packets to the selected backend. The controller
+installs the rules but is not in the TCP data path.
 
 ## Files
 
